@@ -3,7 +3,7 @@ from concurrent.futures import wait, ThreadPoolExecutor as Executor
 from functools import partial
 from operator import itemgetter
 
-import os
+import subprocess
 import sys
 import click
 import boto3
@@ -90,20 +90,24 @@ def ssh(ctx, key, prefer_public_ip, query, ssh_args):
         die("No matches found")
 
     if len(matches) > 1:
+        click.echo("[0] All")
         for i, inst in enumerate(matches):
             click.echo("[{}] {}".format(i+1, fmt_match(inst)))
-        click.echo("pick an option [1-{}] ".format(len(matches)), nl=False)
-        index = read_number(1, len(matches)) - 1
-        choice = matches[index]
+        click.echo("pick an option [0-{}] ".format(len(matches)), nl=False)
+        index = read_number(0, len(matches)) - 1
+        choices = matches if index == -1 else [matches[index]]
         click.echo("")
     else:
-        choice = matches[0]
-
-    click.echo("sshing {}".format(fmt_match(choice)))
+        choices = [matches[0]]
 
     if key:
         extra_args.extend(['-i', key])
-    os.execvp('ssh', ['ssh', '-oStrictHostKeyChecking=no'] + extra_args + [get_ip(choice)] + list(ssh_args))
+    for choice in choices:
+        message = "sshing {}".format(fmt_match(choice))
+        click.echo()
+        click.echo(message)
+        click.echo('-' * len(message))
+        subprocess.call(['ssh', '-oStrictHostKeyChecking=no'] + extra_args + [get_ip(choice)] + list(ssh_args))
 
 
 @cli.command()
