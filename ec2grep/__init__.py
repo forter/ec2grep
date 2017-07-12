@@ -1,8 +1,9 @@
 #!/usr/bin/env python
-from concurrent.futures import wait, ThreadPoolExecutor as Executor
+from concurrent.futures import ThreadPoolExecutor as Executor
 from functools import partial
 from operator import itemgetter
 
+import threading
 import subprocess
 import sys
 import click
@@ -74,6 +75,24 @@ def cli(ctx, region):
     ctx.obj = {'region': region}
 
 
+class OutputConsumer(object):
+
+    def __init__(self, out_read, out_write, prefix):
+        self.prefix = prefix
+        self.out_read = out_read
+        self.out_write = out_write
+        self.consumer = threading.Thread(target=self.consume_output)
+        self.consumer.daemon = True
+        self.consumer.start()
+
+    def consume_output(self):
+        for line in iter(self.out_read.readline, b''):
+            self.out_write.write('[{}] {}'.format(self.prefix, line))
+
+    def join(self):
+        self.consumer.join()
+
+
 @cli.command()
 @click.option('--key', '-i')
 @click.option('--prefer-public-ip', '-p', is_flag=True, default=False)
@@ -103,17 +122,24 @@ def ssh(ctx, key, prefer_public_ip, query, ssh_args, parallel):
     command = ['ssh', '-oStrictHostKeyChecking=no']
     if key:
         command.extend(['-i', key])
-        
+
     if parallel and len(choices) > 1:
         message = "sshing {}".format([fmt_match(c) for c in choices])
         click.echo(message)
         click.echo()
         processes = []
         for choice in choices:
-            p = subprocess.Popen(command + [get_ip(choice)] + list(ssh_args))
-            processes.append(p)
+            ip = get_ip(choice)
+            p = subprocess.Popen(command + [ip] + list(ssh_args),
+                                 stdout=subprocess.PIPE,
+                                 stderr=subprocess.PIPE)
+            stdout_consumer = OutputConsumer(out_read=p.stdout, out_write=sys.stdout, prefix=ip)
+            stderr_consumer = OutputConsumer(out_read=p.stderr, out_write=sys.stderr, prefix=ip)
+            processes.append({'out': stdout_consumer, 'err': stderr_consumer, 'p': p})
         for p in processes:
-            p.wait()
+            p['p'].wait()
+            p['out'].join()
+            p['err'].join()
     else:
         for choice in choices:
             message = "sshing {}".format(fmt_match(choice))
