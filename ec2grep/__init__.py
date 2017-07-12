@@ -77,13 +77,13 @@ def cli(ctx, region):
 @cli.command()
 @click.option('--key', '-i')
 @click.option('--prefer-public-ip', '-p', is_flag=True, default=False)
+@click.option('--parallel', is_flag=True, default=False)
 @click.argument('query')
 @click.argument('ssh_args', nargs=-1, type=click.UNPROCESSED)
 @click.pass_context
-def ssh(ctx, key, prefer_public_ip, query, ssh_args):
+def ssh(ctx, key, prefer_public_ip, query, ssh_args, parallel):
     get_ip = public_ip if prefer_public_ip else private_ip
     fmt_match = extended_public if prefer_public_ip else extended_private
-    extra_args = []
 
     matches = match_instances(ctx.obj['region'], query)
     if not matches:
@@ -100,14 +100,27 @@ def ssh(ctx, key, prefer_public_ip, query, ssh_args):
     else:
         choices = [matches[0]]
 
+    command = ['ssh', '-oStrictHostKeyChecking=no']
     if key:
-        extra_args.extend(['-i', key])
-    for choice in choices:
-        message = "sshing {}".format(fmt_match(choice))
-        click.echo()
+        command.extend(['-i', key])
+        
+    if parallel and len(choices) > 1:
+        message = "sshing {}".format([fmt_match(c) for c in choices])
         click.echo(message)
-        click.echo('-' * len(message))
-        subprocess.call(['ssh', '-oStrictHostKeyChecking=no'] + extra_args + [get_ip(choice)] + list(ssh_args))
+        click.echo()
+        processes = []
+        for choice in choices:
+            p = subprocess.Popen(command + [get_ip(choice)] + list(ssh_args))
+            processes.append(p)
+        for p in processes:
+            p.wait()
+    else:
+        for choice in choices:
+            message = "sshing {}".format(fmt_match(choice))
+            click.echo()
+            click.echo(message)
+            click.echo('-' * len(message))
+            subprocess.call(command + [get_ip(choice)] + list(ssh_args))
 
 
 @cli.command()
