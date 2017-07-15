@@ -151,7 +151,7 @@ def ssh(ctx, key, prefer_public_ip, query, ssh_args, parallel):
             message = 'sshing {}'.format(fmt_match(choice))
             click.echo()
             click.echo(message)
-            click.echo('-' * len(message))
+            click.echo(u'\u2500' * len(message))
             subprocess.call(command + [get_ip(choice)] + list(ssh_args))
 
 
