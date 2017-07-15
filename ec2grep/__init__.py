@@ -115,7 +115,7 @@ def ssh(ctx, key, prefer_public_ip, query, ssh_args, parallel):
         click.echo('[0] All')
         for i, inst in enumerate(matches):
             click.echo('[{}] {}'.format(i+1, fmt_match(inst)))
-        click.echo('pick an option [0-{}] '.format(len(matches)), nl=False)
+        click.echo('select servers [0-{}] (comma separated) '.format(len(matches)), nl=False)
         indices = read_numbers(0, len(matches))
         if len(indices) == 1 and indices[0] == 0:
             choices = matches
