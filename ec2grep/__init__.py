@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import sys
+import pprint
 import threading
 import subprocess
 import itertools
@@ -80,17 +81,17 @@ def cli(ctx, region):
 
 class OutputConsumer(object):
 
-    def __init__(self, out_read, out_write, prefix):
-        self.prefix = prefix
-        self.out_read = out_read
-        self.out_write = out_write
+    def __init__(self, input, output, ip):
+        self.ip = ip
+        self.input = input
+        self.output = output
         self.consumer = threading.Thread(target=self.consume_output)
         self.consumer.daemon = True
         self.consumer.start()
 
     def consume_output(self):
-        for line in iter(self.out_read.readline, b''):
-            self.out_write.write('[{}] {}'.format(self.prefix, line))
+        for line in iter(self.input.readline, b''):
+            self.output.write('[{:<15}] {}'.format(self.ip, line))
 
     def join(self):
         self.consumer.join()
@@ -130,7 +131,7 @@ def ssh(ctx, key, prefer_public_ip, query, ssh_args, parallel):
         command.extend(['-i', key])
 
     if parallel and len(choices) > 1:
-        message = 'sshing {}'.format([fmt_match(c) for c in choices])
+        message = 'sshing:\n{}'.format(pprint.pformat([fmt_match(c) for c in choices]))
         click.echo(message)
         click.echo()
         processes = []
@@ -139,8 +140,8 @@ def ssh(ctx, key, prefer_public_ip, query, ssh_args, parallel):
             p = subprocess.Popen(command + [ip] + list(ssh_args),
                                  stdout=subprocess.PIPE,
                                  stderr=subprocess.PIPE)
-            stdout_consumer = OutputConsumer(out_read=p.stdout, out_write=sys.stdout, prefix=ip)
-            stderr_consumer = OutputConsumer(out_read=p.stderr, out_write=sys.stderr, prefix=ip)
+            stdout_consumer = OutputConsumer(input=p.stdout, output=sys.stdout, ip=ip)
+            stderr_consumer = OutputConsumer(input=p.stderr, output=sys.stderr, ip=ip)
             processes.append({'out': stdout_consumer, 'err': stderr_consumer, 'p': p})
         for p in processes:
             p['p'].wait()
