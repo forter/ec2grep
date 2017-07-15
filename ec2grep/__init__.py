@@ -1,22 +1,23 @@
 #!/usr/bin/env python
+
+import sys
+import threading
+import subprocess
+import itertools
 from concurrent.futures import ThreadPoolExecutor as Executor
 from functools import partial
 from operator import itemgetter
 
-import threading
-import subprocess
-import sys
-import click
 import boto3
-import itertools
+import click
 import six
 
 executor = Executor(4)
 name = (lambda i: {tag['Key']: tag['Value'] for tag in i.get('Tags', [])}.get('Name', ''))
 public_ip = itemgetter('PublicIpAddress')
 private_ip = itemgetter('PrivateIpAddress')
-extended_public = (lambda i: "{} ({})".format(name(i), public_ip(i)))
-extended_private = (lambda i: "{} ({})".format(name(i), private_ip(i)))
+extended_public = (lambda i: '{} ({})'.format(name(i), public_ip(i)))
+extended_private = (lambda i: '{} ({})'.format(name(i), private_ip(i)))
 DEFAULT_ATTRIBUTES = [
     'tag:Name',
     'network-interface.addresses.association.public-ip',
@@ -46,16 +47,18 @@ def die(*args):
     sys.exit(1)
 
 
-def read_number(min_value, max_value):
+def read_numbers(min_value, max_value):
     while True:
         try:
-            choice = six.moves.input()
-            choice = int(choice)
-            if not (min_value <= choice <= max_value):
-                raise ValueError("Invalid input")
-            return choice
+            choices = six.moves.input()
+            choices = [int(c.strip()) for c in choices.split(',')]
+            if not (all(min_value <= c <= max_value for c in choices)):
+                raise ValueError('Invalid input')
+            if len(choices) != 1 and 0 in choices:
+                raise ValueError('Invalid input')
+            return choices
         except ValueError as e:
-            click.echo("{}".format(e), err=True)
+            click.echo(str(e), err=True)
             continue
 
 
@@ -106,16 +109,19 @@ def ssh(ctx, key, prefer_public_ip, query, ssh_args, parallel):
 
     matches = match_instances(ctx.obj['region'], query)
     if not matches:
-        die("No matches found")
+        die('No matches found')
 
     if len(matches) > 1:
-        click.echo("[0] All")
+        click.echo('[0] All')
         for i, inst in enumerate(matches):
-            click.echo("[{}] {}".format(i+1, fmt_match(inst)))
-        click.echo("pick an option [0-{}] ".format(len(matches)), nl=False)
-        index = read_number(0, len(matches)) - 1
-        choices = matches if index == -1 else [matches[index]]
-        click.echo("")
+            click.echo('[{}] {}'.format(i+1, fmt_match(inst)))
+        click.echo('pick an option [0-{}] '.format(len(matches)), nl=False)
+        indices = read_numbers(0, len(matches))
+        if len(indices) == 1 and indices[0] == 0:
+            choices = matches
+        else:
+            choices = [matches[index - 1] for index in indices]
+        click.echo()
     else:
         choices = [matches[0]]
 
@@ -124,7 +130,7 @@ def ssh(ctx, key, prefer_public_ip, query, ssh_args, parallel):
         command.extend(['-i', key])
 
     if parallel and len(choices) > 1:
-        message = "sshing {}".format([fmt_match(c) for c in choices])
+        message = 'sshing {}'.format([fmt_match(c) for c in choices])
         click.echo(message)
         click.echo()
         processes = []
@@ -142,7 +148,7 @@ def ssh(ctx, key, prefer_public_ip, query, ssh_args, parallel):
             p['err'].join()
     else:
         for choice in choices:
-            message = "sshing {}".format(fmt_match(choice))
+            message = 'sshing {}'.format(fmt_match(choice))
             click.echo()
             click.echo(message)
             click.echo('-' * len(message))
@@ -160,7 +166,7 @@ def ls(ctx, query, formatter, delim, custom_format):
     if not custom_format:
         formatter = formatter.join('{}')
     if not matches:
-        die("No matches found")
+        die('No matches found')
 
     click.echo(delim.join(formatter.format(**{k: f(m) for k, f in formatters.iteritems()}) for m in matches))
 
