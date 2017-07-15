@@ -1,74 +1,38 @@
-#!/usr/bin/env python
+#! /usr/bin/env python
 
-import sys
-import pprint
-import threading
-import subprocess
+import concurrent.futures
+import functools
 import itertools
-from concurrent.futures import ThreadPoolExecutor as Executor
-from functools import partial
-from operator import itemgetter
+import operator
+import pprint
+import subprocess
+import sys
+import threading
 
 import boto3
 import click
 import six
 
-executor = Executor(4)
-name = (lambda i: {tag['Key']: tag['Value'] for tag in i.get('Tags', [])}.get('Name', ''))
-public_ip = itemgetter('PublicIpAddress')
-private_ip = itemgetter('PrivateIpAddress')
-extended_public = (lambda i: '{} ({})'.format(name(i), public_ip(i)))
-extended_private = (lambda i: '{} ({})'.format(name(i), private_ip(i)))
-DEFAULT_ATTRIBUTES = [
+
+DEFAULT_ATTRIBUTES = (
     'tag:Name',
     'network-interface.addresses.association.public-ip',
     'network-interface.addresses.private-ip-address',
-    'network-interface.private-dns-name'
-]
+    'network-interface.private-dns-name',
+)
 
 
-def _get_instances(ec2, filter_):
-    response = ec2.describe_instances(Filters=[filter_])
-    reservations = response['Reservations']
-    return list(itertools.chain.from_iterable(r['Instances'] for r in reservations))
-
-
-def match_instances(region_name, query, attributes=DEFAULT_ATTRIBUTES):
-    ec2 = boto3.client('ec2', region_name=region_name)
-    get_instances = partial(_get_instances, ec2)
-    instance_lists = executor.map(get_instances, [
-        {'Name': attr, 'Values': ['*{}*'.format(query)]} for attr in attributes
-    ])
-    chained = (i for i in itertools.chain.from_iterable(instance_lists) if 'PublicIpAddress' in i)
-    return sorted(chained, key=name)
-
-
-def die(*args):
-    click.echo(*args, err=True)
-    sys.exit(1)
-
-
-def read_numbers(min_value, max_value):
-    while True:
-        try:
-            choices = six.moves.input()
-            choices = [int(c.strip()) for c in choices.split(',')]
-            if not (all(min_value <= c <= max_value for c in choices)):
-                raise ValueError('Invalid input')
-            if len(choices) != 1 and 0 in choices:
-                raise ValueError('Invalid input')
-            return choices
-        except ValueError as e:
-            click.echo(str(e), err=True)
-            continue
-
-
+name = (lambda i: {tag['Key']: tag['Value'] for tag in i.get('Tags', [])}.get('Name', ''))
+public_ip = operator.itemgetter('PublicIpAddress')
+private_ip = operator.itemgetter('PrivateIpAddress')
+extended_public = (lambda i: '{} ({})'.format(name(i), public_ip(i)))
+extended_private = (lambda i: '{} ({})'.format(name(i), private_ip(i)))
 formatters = {
     'extended_public': extended_public,
     'extended_private': extended_private,
     'public_ip': public_ip,
     'private_ip': private_ip,
-    'name': name
+    'name': name,
 }
 
 
@@ -79,24 +43,6 @@ def cli(ctx, region):
     ctx.obj = {'region': region}
 
 
-class OutputConsumer(object):
-
-    def __init__(self, input, output, ip):
-        self.ip = ip
-        self.input = input
-        self.output = output
-        self.consumer = threading.Thread(target=self.consume_output)
-        self.consumer.daemon = True
-        self.consumer.start()
-
-    def consume_output(self):
-        for line in iter(self.input.readline, b''):
-            self.output.write('[{:<15}] {}'.format(self.ip, line))
-
-    def join(self):
-        self.consumer.join()
-
-
 @cli.command()
 @click.option('--key', '-i')
 @click.option('--prefer-public-ip', '-p', is_flag=True, default=False)
@@ -104,14 +50,12 @@ class OutputConsumer(object):
 @click.argument('query')
 @click.argument('ssh_args', nargs=-1, type=click.UNPROCESSED)
 @click.pass_context
-def ssh(ctx, key, prefer_public_ip, query, ssh_args, parallel):
+def ssh(ctx, key, prefer_public_ip, parallel, query, ssh_args):
     get_ip = public_ip if prefer_public_ip else private_ip
     fmt_match = extended_public if prefer_public_ip else extended_private
-
     matches = match_instances(ctx.obj['region'], query)
     if not matches:
         die('No matches found')
-
     if len(matches) > 1:
         click.echo('[0] All')
         for i, inst in enumerate(matches):
@@ -125,11 +69,9 @@ def ssh(ctx, key, prefer_public_ip, query, ssh_args, parallel):
         click.echo()
     else:
         choices = [matches[0]]
-
     command = ['ssh', '-oStrictHostKeyChecking=no']
     if key:
         command.extend(['-i', key])
-
     if parallel and len(choices) > 1:
         message = 'sshing:\n{}'.format(pprint.pformat([fmt_match(c) for c in choices]))
         click.echo(message)
@@ -157,19 +99,73 @@ def ssh(ctx, key, prefer_public_ip, query, ssh_args, parallel):
 
 
 @cli.command()
-@click.argument('query')
 @click.option('--delim', '-d', default='\n')
 @click.option('--formatter', '-f', default='extended_private')
 @click.option('--custom-format', '-c', is_flag=True, default=False)
+@click.argument('query')
 @click.pass_context
-def ls(ctx, query, formatter, delim, custom_format):
+def ls(ctx, formatter, delim, custom_format, query):
     matches = match_instances(ctx.obj['region'], query)
-    if not custom_format:
-        formatter = formatter.join('{}')
     if not matches:
         die('No matches found')
-
+    if not custom_format:
+        formatter = formatter.join('{}')
     click.echo(delim.join(formatter.format(**{k: f(m) for k, f in formatters.iteritems()}) for m in matches))
+
+
+def _get_instances(ec2, filter_):
+    response = ec2.describe_instances(Filters=[filter_])
+    reservations = response['Reservations']
+    return list(itertools.chain.from_iterable(r['Instances'] for r in reservations))
+
+
+def match_instances(region_name, query, attributes=DEFAULT_ATTRIBUTES):
+    ec2 = boto3.client('ec2', region_name=region_name)
+    get_instances = functools.partial(_get_instances, ec2)
+    executor = concurrent.futures.ThreadPoolExecutor(len(attributes))
+    instance_lists = executor.map(get_instances, [
+        {'Name': attr, 'Values': ['*{}*'.format(query)]} for attr in attributes
+    ])
+    chained = (i for i in itertools.chain.from_iterable(instance_lists) if 'PublicIpAddress' in i)
+    return sorted(chained, key=name)
+
+
+def die(*args):
+    click.echo(*args, err=True)
+    sys.exit(1)
+
+
+def read_numbers(min_value, max_value):
+    while True:
+        try:
+            choices = six.moves.input()
+            choices = [int(c.strip()) for c in choices.split(',')]
+            if not (all(min_value <= c <= max_value for c in choices)):
+                raise ValueError('Invalid input')
+            if len(choices) != 1 and 0 in choices:
+                raise ValueError('Invalid input')
+            return choices
+        except ValueError as e:
+            click.echo(str(e), err=True)
+            continue
+
+
+class OutputConsumer(object):
+
+    def __init__(self, input, output, ip):
+        self.ip = ip
+        self.input = input
+        self.output = output
+        self.consumer = threading.Thread(target=self.consume_output)
+        self.consumer.daemon = True
+        self.consumer.start()
+
+    def consume_output(self):
+        for line in iter(self.input.readline, b''):
+            self.output.write('[{:<15}] {}'.format(self.ip, line))
+
+    def join(self):
+        self.consumer.join()
 
 
 if __name__ == '__main__':
