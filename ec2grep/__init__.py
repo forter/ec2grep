@@ -122,10 +122,10 @@ def _get_instances(ec2, filter_):
 def match_instances(region_name, query, attributes=DEFAULT_ATTRIBUTES):
     ec2 = boto3.client('ec2', region_name=region_name)
     get_instances = functools.partial(_get_instances, ec2)
-    executor = concurrent.futures.ThreadPoolExecutor(len(attributes))
-    instance_lists = executor.map(get_instances, [
-        {'Name': attr, 'Values': ['*{}*'.format(query)]} for attr in attributes
-    ])
+    with concurrent.futures.ThreadPoolExecutor(len(attributes)) as executor:
+        instance_lists = executor.map(get_instances, [
+            {'Name': attr, 'Values': ['*{}*'.format(query)]} for attr in attributes
+        ])
     chained = (i for i in itertools.chain.from_iterable(instance_lists) if 'PublicIpAddress' in i)
     return sorted(chained, key=name)
 
