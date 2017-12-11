@@ -27,7 +27,9 @@ public_ip = operator.itemgetter('PublicIpAddress')
 private_ip = operator.itemgetter('PrivateIpAddress')
 extended_public = (lambda i: '{} ({})'.format(name(i), public_ip(i)))
 extended_private = (lambda i: '{} ({})'.format(name(i), private_ip(i)))
+extended = (lambda i: '{} (public: {}, private: {})'.format(name(i), public_ip(i), private_ip(i)))
 formatters = {
+    'extended': extended,
     'extended_public': extended_public,
     'extended_private': extended_private,
     'public_ip': public_ip,
