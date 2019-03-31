@@ -59,7 +59,7 @@ def ssh(ctx, user, key, ssh_config, prefer_public_ip, parallel, query, ssh_args)
     validate_identity_parameters(user, key, ssh_config)
 
     def op(host, host_count):
-        command = ['ssh', '-oStrictHostKeyChecking=no']
+        command = ['ssh', '-oStrictHostKeyChecking=no', '-t']
         command.extend(['-i', key]) if key else command.extend(['-F', ssh_config])
         if user:
             command.extend(['-l', user])
