@@ -24,11 +24,13 @@ DEFAULT_ATTRIBUTES = (
 
 
 name = (lambda i: {tag['Key']: tag['Value'] for tag in i.get('Tags', [])}.get('Name', ''))
+initiator = (lambda i: {tag['Key']: tag['Value'] for tag in i.get('Tags', [])}.get('Initiator', ''))
 private_ip = (lambda i: i.get('PrivateIpAddress', None))
 public_ip = (lambda i: i.get('PublicIpAddress', None))
 extended_public = (lambda i: '{} ({})'.format(name(i), public_ip(i)))
 extended_private = (lambda i: '{} ({})'.format(name(i), private_ip(i)))
 extended = (lambda i: '{} (public: {}, private: {})'.format(name(i), public_ip(i), private_ip(i)))
+extended_initiator = (lambda i: '{} (name: {})'.format(initiator(i), name(i)))
 formatters = {
     'extended': extended,
     'extended_public': extended_public,
@@ -36,6 +38,8 @@ formatters = {
     'public_ip': public_ip,
     'private_ip': private_ip,
     'name': name,
+    'initiator': initiator,
+    'extended_initiator': extended_initiator,
 }
 
 
