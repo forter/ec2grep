@@ -4,7 +4,7 @@
 Preferally for the default system interpreter instead of a virtualenv.
 
 ```bash
-pip install git+https://github.com/bergundy/ec2grep
+pip install git+https://github.com/forter/ec2grep
 ```
 
 ### Usage
