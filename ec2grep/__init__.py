@@ -3,7 +3,6 @@
 import concurrent.futures
 import functools
 import itertools
-import operator
 import os
 import pprint
 import subprocess
@@ -13,7 +12,6 @@ import threading
 import boto3
 import click
 import six
-
 
 DEFAULT_ATTRIBUTES = (
     "tag:Name",
