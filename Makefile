@@ -3,7 +3,7 @@ ECR_URL ?= 174522763890.dkr.ecr.us-east-1.amazonaws.com
 .PHONY: build
 build: 
 	@echo "======= Building Python ========"
-	docker build --pull --build-arg .
+	docker build --pull .
 
 ci-test:
 	echo "No tests"
