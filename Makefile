@@ -1,14 +1,9 @@
 ECR_URL ?= 174522763890.dkr.ecr.us-east-1.amazonaws.com
 
 .PHONY: build
-build: build-py2 build-py3
-
-build-py2: PYTHON_VERSION = 2.7.17
-build-py3: PYTHON_VERSION = 3.8.5
-
-build-py3 build-py2:
-	@echo "======= Building Python $(PYTHON_VERSION) ========"
-	docker build --pull --build-arg "PYTHON_VERSION=$(PYTHON_VERSION)" .
+build: 
+	@echo "======= Building Python ========"
+	docker build --pull .
 
 ci-test:
 	echo "No tests"
