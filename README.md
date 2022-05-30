@@ -35,6 +35,11 @@ With arguments
 ec2 ssh my-hostname -- w
 ```
 
+Parallel command
+```bash
+ec2 ssh --parallel -F ~/.ssh/gozer my-hostname -- "<command>"
+```
+
 ##### custom region
 
 ```bash
